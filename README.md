@@ -7,17 +7,27 @@ VR CyberDeck is a desktop application for sideloading apps to Android devices an
 
 ## Features
 
-- Packages the upstream VR CyberDeck 1.8.7 AppImage.
+- Packages the upstream VR CyberDeck AppImage.
 - Provides a desktop launcher and application icon.
 - Includes `adb` utilities from `android-tools`.
 - Includes `7z` utilities from `p7zip`.
 - Supports running the application through `nix run`.
 - Uses a pinned Nixpkgs revision through `flake.lock`.
 
+## Architecture support
+
+| Architecture | Upstream binary | Status |
+| --- | --- | --- |
+| x86_64 Linux | `vr-cyberdeck-1.8.7-x86_64.AppImage` | Tested |
+| ARM64 Linux | `vr-cyberdeck-1.8.7-arm64.AppImage` | Untested |
+
+ARM64 support is included based on the availability of an upstream ARM64 AppImage. It is expected to work on compatible ARM64 Linux systems, but has not been tested. Compatibility may depend on the system configuration, available libraries, and graphical environment.
+
 ## Requirements
 
 - Nix with Flakes enabled.
-- NixOS or another compatible x86_64 Linux system.
+- NixOS or another compatible Linux distribution.
+- A supported Linux architecture: x86_64 or ARM64.
 - A working graphical desktop environment.
 
 ## Usage
@@ -58,11 +68,11 @@ Add the flake as an input to your system configuration:
 }
 ```
 
-Then add the package to your system packages:
+Add the package to your system packages:
 
 ```nix
 environment.systemPackages = [
-  inputs.vrcd.packages.x86_64-linux.default
+  inputs.vrcd.packages.${pkgs.system}.default
 ];
 ```
 
@@ -90,19 +100,13 @@ To update to a new release:
 4. Update `flake.lock` if you want to use a newer Nixpkgs revision.
 5. Build and test the package.
 
-If you need Nix to calculate the new source hash, temporarily use:
-
-```nix
-hash = "";
-```
-
-Then run:
+To calculate a new source hash, use:
 
 ```bash
-nix build
+nix store prefetch-file --hash-type sha256 <URL>
 ```
 
-Nix will report the expected hash. Replace the placeholder with the reported value before building again.
+Replace the hash in `flake.nix` with the resulting SRI hash.
 
 ## Project structure
 
@@ -118,12 +122,9 @@ VRCD_nixos_flake/
 
 ## License
 
-This repository contains Nix packaging for VR CyberDeck and does not
-redistribute the upstream AppImage.
+This repository contains Nix packaging for VR CyberDeck and does not redistribute the upstream AppImage directly.
 
-VR CyberDeck is licensed under the GNU Affero General Public License v3.
-The original application and its source code are maintained by the upstream
-project.
+VR CyberDeck is licensed under the GNU Affero General Public License v3. The original application and its source code are maintained by the upstream project.
 
 - Upstream: https://github.com/DeliciousMeatPop/VRCD
 - License: https://www.gnu.org/licenses/agpl-3.0.html

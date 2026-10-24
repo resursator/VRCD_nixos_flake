@@ -1,4 +1,3 @@
-
 {
   description = "VR CyberDeck AppImage package for NixOS";
 
@@ -6,67 +5,81 @@
 
   outputs = { self, nixpkgs }:
     let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
+      lib = nixpkgs.lib;
 
-      appimage = pkgs.fetchurl {
-        url = "https://github.com/DeliciousMeatPop/VRCD/releases/download/v1.8.7/vr-cyberdeck-1.8.7-x86_64.AppImage";
-        hash = "sha256-+WFvOdeub36v4H4O+/xKU/0b7tC0sRKGvJR4OPN2JsY=";
-      };
+      mkPackage = system:
+        let
+          pkgs = import nixpkgs { inherit system; };
 
-      extracted = pkgs.appimageTools.extract {
-        pname = "vr-cyberdeck";
-        version = "1.8.7";
-        src = appimage;
-      };
+          isArm = system == "aarch64-linux";
+          arch = if isArm then "arm64" else "x86_64";
 
-      vr-cyberdeck = pkgs.appimageTools.wrapType2 {
-        pname = "vr-cyberdeck";
-        version = "1.8.7";
-        src = appimage;
+          appimage = pkgs.fetchurl {
+            url = "https://github.com/DeliciousMeatPop/VRCD/releases/download/v1.8.7/vr-cyberdeck-1.8.7-${arch}.AppImage";
+            hash = if isArm then
+              "sha256-70idztJMb35aZCOIBAy/GmNagIzWEgFFJ1RggwH/GMY="
+            else
+              "sha256-+WFvOdeub36v4H4O+/xKU/0b7tC0sRKGvJR4OPN2JsY=";
+          };
 
-        extraPkgs = pkgs: with pkgs; [
-          android-tools
-          p7zip
-        ];
+          extracted = pkgs.appimageTools.extract {
+            pname = "vr-cyberdeck";
+            version = "1.8.7";
+            src = appimage;
+          };
+        in
+        pkgs.appimageTools.wrapType2 {
+          pname = "vr-cyberdeck";
+          version = "1.8.7";
+          src = appimage;
 
-        extraInstallCommands = ''
-          install -Dm644 \
-            ${extracted}/resources/app.asar.unpacked/resources/icon.png \
-            $out/share/icons/hicolor/512x512/apps/vr-cyberdeck.png
+          extraPkgs = pkgs: with pkgs; [
+            android-tools
+            p7zip
+          ];
 
-          mkdir -p $out/share/applications
+          extraInstallCommands = ''
+            install -Dm644 \
+              ${extracted}/resources/app.asar.unpacked/resources/icon.png \
+              $out/share/icons/hicolor/512x512/apps/vr-cyberdeck.png
 
-          cat > $out/share/applications/vr-cyberdeck.desktop <<EOF
-          [Desktop Entry]
-          Name=VR CyberDeck
-          Comment=Android and Meta Quest sideloading tool
-          Exec=vr-cyberdeck
-          Terminal=false
-          Type=Application
-          Categories=Utility;
-          Icon=vr-cyberdeck
-          EOF
-        '';
+            mkdir -p $out/share/applications
 
-        meta = {
-          description = "Android and Meta Quest sideloading tool";
-          homepage = "https://github.com/DeliciousMeatPop/VRCD";
-          license = pkgs.lib.licenses.agpl3Plus;
-          platforms = [ system ];
-          mainProgram = "vr-cyberdeck";
+            cat > $out/share/applications/vr-cyberdeck.desktop <<EOF
+            [Desktop Entry]
+            Name=VR CyberDeck
+            Comment=Android and Meta Quest sideloading tool
+            Exec=vr-cyberdeck
+            Terminal=false
+            Type=Application
+            Categories=Utility;
+            Icon=vr-cyberdeck
+            EOF
+          '';
+
+          meta = {
+            description = "Android and Meta Quest sideloading tool";
+            homepage = "https://github.com/DeliciousMeatPop/VRCD";
+            license = lib.licenses.agpl3Plus;
+            platforms = [ system ];
+            mainProgram = "vr-cyberdeck";
+          };
         };
-      };
+
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      eachSystem = lib.genAttrs systems;
     in
     {
-      packages.${system} = {
-        default = vr-cyberdeck;
-        vr-cyberdeck = vr-cyberdeck;
-      };
+      packages = eachSystem (system: {
+        default = mkPackage system;
+        vr-cyberdeck = mkPackage system;
+      });
 
-      apps.${system}.default = {
-        type = "app";
-        program = "${vr-cyberdeck}/bin/vr-cyberdeck";
-      };
+      apps = eachSystem (system: {
+        default = {
+          type = "app";
+          program = "${mkPackage system}/bin/vr-cyberdeck";
+        };
+      });
     };
 }
