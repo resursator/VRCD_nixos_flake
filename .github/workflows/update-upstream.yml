@@ -1,0 +1,162 @@
+name: Update upstream release
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      local_test:
+        description: "Run without creating a pull request"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-upstream
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Check upstream release
+    runs-on: ubuntu-24.04
+    outputs:
+      needed: ${{ steps.check.outputs.needed }}
+      version: ${{ steps.upstream.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Find latest upstream release
+        id: upstream
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          tag="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/DeliciousMeatPop/VRCD/releases/latest \
+            | jq -er '.tag_name')"
+
+          if [[ ! "$tag" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid upstream release tag: $tag" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if already up to date
+        id: check
+        env:
+          TARGET_VERSION: ${{ steps.upstream.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current="$(sed -nE \
+            's/^[[:space:]]*version = "([^"]+)";/\1/p' \
+            flake.nix | head -n1)"
+
+          echo "Current: $current"
+          echo "Target:  $TARGET_VERSION"
+
+          if [[ "$current" == "$TARGET_VERSION" ]]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update version and hashes
+        if: steps.check.outputs.needed == 'true'
+        run: python3 scripts/update-upstream.py "${{ steps.upstream.outputs.version }}"
+
+      - name: Upload updated flake
+        if: steps.check.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrcd-updated-flake
+          path: flake.nix
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    name: Verify ${{ matrix.system }}
+    needs: update
+    if: needs.update.outputs.needed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-24.04
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download updated flake
+        uses: actions/download-artifact@v4
+        with:
+          name: vrcd-updated-flake
+          path: updated
+
+      - name: Apply updated flake
+        run: cp updated/flake.nix flake.nix
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build package
+        run: nix build ".#packages.${{ matrix.system }}.default" --no-link --print-build-logs
+
+  create-pr:
+    name: Create update pull request
+    needs:
+      - update
+      - verify
+    if: >-
+      needs.update.outputs.needed == 'true' &&
+      inputs.local_test != true
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download updated flake
+        uses: actions/download-artifact@v4
+        with:
+          name: vrcd-updated-flake
+          path: updated
+
+      - name: Apply updated flake
+        run: cp updated/flake.nix flake.nix
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bot/update-vrcd-${{ needs.update.outputs.version }}
+          delete-branch: true
+          commit-message: "Update VR CyberDeck to ${{ needs.update.outputs.version }}"
+          title: "Update VR CyberDeck to ${{ needs.update.outputs.version }}"
+          body: |
+            Automated update to upstream VR CyberDeck release.
+
+            Updated the AppImage version and recalculated SHA-256 hashes
+            for x86_64 and ARM64. Both native package builds passed.
+          add-paths: |
+            flake.nix
