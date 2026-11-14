@@ -7,7 +7,7 @@
     let
       lib = nixpkgs.lib;
 
-      version = "1.8.9";
+      version = "1.9.0";
 
       mkPackage = system:
         let
@@ -19,9 +19,9 @@
           appimage = pkgs.fetchurl {
             url = "https://github.com/DeliciousMeatPop/VRCD/releases/download/v${version}/vr-cyberdeck-${version}-${arch}.AppImage";
             hash = if isArm then
-              "sha256-WoZeXwWO70sOALz5RdjrcW8GrRBsoLNtcu72NqUVlzI="
+              "sha256-M4WKf+z4FNuW3dmvFlaZo+KdAtOKrj9Q6Dw6CTNf0F4="
             else
-              "sha256-9PKeGit/h11a/cEAVZG2LV7VDJTNjASHrj+FBPo05CQ=";
+              "sha256-y68hMWwsN7e15nWzccVW0ADahugzm5HjATIv55UETQQ=";
           };
 
           extracted = pkgs.appimageTools.extract {
